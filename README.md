@@ -290,28 +290,53 @@
             // 측정 지점 정의 (타원 표면으로부터 5mm 떨어진 지점)
             getMeasurementPoints() {
                 const offset = 0.005; // 5mm
+
+                // Sharp Tip (theta = 0)
+                const sharpTipX = this.a;
+                const sharpTipY = 0;
+                const sharpTipNormalX = sharpTipX / (this.a * this.a);
+                const sharpTipNormalY = sharpTipY / (this.b * this.b);
+                const sharpTipNormalMag = Math.sqrt(sharpTipNormalX * sharpTipNormalX + sharpTipNormalY * sharpTipNormalY);
+                const sharpTipPointX = sharpTipX + offset * (sharpTipNormalX / sharpTipNormalMag);
+                const sharpTipPointY = sharpTipY + offset * (sharpTipNormalY / sharpTipNormalMag);
+
+                // Flat Side (theta = PI/2)
+                const flatSideX = 0;
+                const flatSideY = this.b;
+                const flatSideNormalX = flatSideX / (this.a * this.a);
+                const flatSideNormalY = flatSideY / (this.b * this.b);
+                const flatSideNormalMag = Math.sqrt(flatSideNormalX * flatSideNormalX + flatSideNormalY * flatSideNormalY);
+                const flatSidePointX = flatSideX + offset * (flatSideNormalX / flatSideNormalMag);
+                const flatSidePointY = flatSideY + offset * (flatSideNormalY / flatSideNormalMag);
+
+                // Middle (theta = PI/4)
+                const middleTheta = Math.PI / 4;
+                const middleEllipseX = this.a * Math.cos(middleTheta);
+                const middleEllipseY = this.b * Math.sin(middleTheta);
+                const middleNormalX = middleEllipseX / (this.a * this.a);
+                const middleNormalY = middleEllipseY / (this.b * this.b);
+                const middleNormalMag = Math.sqrt(middleNormalX * middleNormalX + middleNormalY * middleNormalY);
+                const middlePointX = middleEllipseX + offset * (middleNormalX / middleNormalMag);
+                const middlePointY = middleEllipseY + offset * (middleNormalY / middleNormalMag);
+
                 return {
                     sharp_tip: {
-                        // 뾰족한 끝 (장축 양 끝, theta=0 방향)
-                        x: this.a + offset, 
-                        y: 0,
+                        x: sharpTipPointX, 
+                        y: sharpTipPointY,
                         angle: 0, 
                         color: '#e74c3c',
                         name: 'Sharp Tip'
                     },
                     middle: {
-                        // 중간 지점 (뾰족한 곳과 평평한 곳 사이의 대략 45도 각도 위치)
-                        // 타원점에서 45도 방향으로 떨어진 지점
-                        x: (this.a * Math.cos(Math.PI/4)) + (offset * Math.cos(Math.PI/4)),
-                        y: (this.b * Math.sin(Math.PI/4)) + (offset * Math.sin(Math.PI/4)),
-                        angle: Math.PI/4,
+                        x: middlePointX,
+                        y: middlePointY,
+                        angle: middleTheta,
                         color: '#f39c12',
                         name: 'Middle'
                     },
                     flat_side: {
-                        // 평평한 면 (단축 양 끝, theta=PI/2 방향)
-                        x: 0,
-                        y: this.b + offset, 
+                        x: flatSidePointX,
+                        y: flatSidePointY, 
                         angle: Math.PI/2, 
                         color: '#3498db',
                         name: 'Flat Side'
@@ -324,8 +349,6 @@
                 const measurementPoints = this.getMeasurementPoints();
                 
                 this.plotVectorField(measurementPoints);
-                // this.plotContours(measurementPoints); // 제거
-                // this.plotChargeDensityDistribution(); // 제거
                 this.plotComparison(measurementPoints);
                 this.updateResults(measurementPoints);
             }
@@ -415,15 +438,16 @@
                     const v = vectors[k];
                     const norm = v.mag;
                     if (norm > 0) {
+                        // 화살표 머리가 v.x, v.y에 위치하도록 조정
                         layout.annotations.push({
-                            x: v.x + v.Ex / norm * arrowScale, // 화살표 머리가 해당 위치로 가도록
-                            y: v.y + v.Ey / norm * arrowScale,
-                            ax: v.x, // 화살표 꼬리가 v.x, v.y에 위치
-                            ay: v.y,
+                            x: v.x, 
+                            y: v.y,
+                            ax: v.x - (v.Ex / norm * arrowScale), // 꼬리 위치 조정
+                            ay: v.y - (v.Ey / norm * arrowScale),
                             xref: 'x',
                             yref: 'y',
-                            axref: 'x',
-                            ayref: 'y',
+                            axref: 'x', 
+                            ayref: 'y', 
                             arrowhead: 2,
                             arrowsize: 1,
                             arrowwidth: 2,
@@ -434,10 +458,6 @@
                 
                 Plotly.newPlot('fieldPlot', traces, layout);
             }
-            
-            // `plotContours` 함수는 제거
-            
-            // `plotChargeDensityDistribution` 함수는 제거
             
             plotComparison(measurementPoints) {
                 const names = [];
