@@ -247,33 +247,44 @@
                 
                 if (r === 0) return {Ex: 0, Ey: 0, magnitude: 0};
                 
-                const theta = Math.atan2(y, x);
+                // 측정점에서 가장 가까운 타원 표면점의 각도 찾기
+                let minDistance = Infinity;
+                let closestTheta = 0;
                 
-                // 타원 표면까지의 거리
-                const rSurface = (a * b) / Math.sqrt(
-                    Math.pow(b * Math.cos(theta), 2) + Math.pow(a * Math.sin(theta), 2)
-                );
+                for (let i = 0; i < 360; i++) {
+                    const theta = i * Math.PI / 180;
+                    const surfaceX = a * Math.cos(theta);
+                    const surfaceY = b * Math.sin(theta);
+                    const distance = Math.sqrt((x - surfaceX) ** 2 + (y - surfaceY) ** 2);
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestTheta = theta;
+                    }
+                }
                 
-                const distanceFromSurface = Math.max(0.001, r - rSurface);
+                const surfaceX = a * Math.cos(closestTheta);
+                const surfaceY = b * Math.sin(closestTheta);
+                const distanceFromSurface = Math.max(0.001, minDistance);
                 
-                if (r <= rSurface) {
+                // 타원 내부 점이면 전기장 0
+                if (minDistance < 0.001) {
                     return {Ex: 0, Ey: 0, magnitude: 0};
                 }
                 
                 // 해당 각도에서의 표면 전기장 강도
-                const surfaceTheta = Math.atan2(y * a / b, x * b / a);
-                const surfaceField = this.getElectricFieldAtSurface(surfaceTheta, params);
+                const surfaceField = this.getElectricFieldAtSurface(closestTheta, params);
                 
-                // 거리에 따른 감소 (대략적으로 1/r² 법칙)
-                const fieldMagnitude = surfaceField * Math.pow(0.01 / distanceFromSurface, 1.8);
+                // 거리에 따른 감소
+                const fieldMagnitude = surfaceField * Math.pow(0.005 / distanceFromSurface, 1.5);
                 
-                // 전기장 벡터 성분
-                const Ex = fieldMagnitude * x / r;
-                const Ey = fieldMagnitude * y / r;
+                // 전기장 벡터는 표면에서 측정점 방향
+                const directionX = (x - surfaceX) / distanceFromSurface;
+                const directionY = (y - surfaceY) / distanceFromSurface;
                 
                 return {
-                    Ex: Ex,
-                    Ey: Ey,
+                    Ex: fieldMagnitude * directionX,
+                    Ey: fieldMagnitude * directionY,
                     magnitude: fieldMagnitude
                 };
             }
@@ -281,24 +292,45 @@
             // 측정 지점 정의
             getMeasurementPoints(params) {
                 const {a, b} = params;
+                const offset = 0.005; // 5mm 오프셋
+                
+                // 각 각도에서 타원 표면의 점 계산
+                const getEllipsePoint = (theta) => {
+                    return {
+                        x: a * Math.cos(theta),
+                        y: b * Math.sin(theta)
+                    };
+                };
+                
+                // 표면에서 법선 방향으로 오프셋된 측정점 계산
+                const getMeasurementPoint = (theta) => {
+                    const surface = getEllipsePoint(theta);
+                    // 타원에서 법선 벡터 계산
+                    const nx = surface.x / (a * a);
+                    const ny = surface.y / (b * b);
+                    const norm = Math.sqrt(nx * nx + ny * ny);
+                    
+                    return {
+                        x: surface.x + (nx / norm) * offset,
+                        y: surface.y + (ny / norm) * offset
+                    };
+                };
+                
                 return {
                     sharp_tip: {
-                        x: a + 0.005, // 뾰족한 끝에서 5mm 떨어진 지점
-                        y: 0,
+                        ...getMeasurementPoint(0), // 뾰족한 끝 (θ=0)
                         angle: 0,
                         color: '#e74c3c',
                         name: '뾰족한 끝'
                     },
                     middle: {
-                        x: (a * 0.7 + 0.005) * Math.cos(Math.PI/4),
-                        y: (b * 0.7 + 0.005) * Math.sin(Math.PI/4),
+                        ...getMeasurementPoint(Math.PI/4), // 중간 부분 (θ=π/4)
                         angle: Math.PI/4,
                         color: '#f39c12',
                         name: '중간 부분'
                     },
                     flat_side: {
-                        x: 0,
-                        y: b + 0.005, // 평평한 면에서 5mm 떨어진 지점
+                        ...getMeasurementPoint(Math.PI/2), // 평평한 면 (θ=π/2)
                         angle: Math.PI/2,
                         color: '#3498db',
                         name: '평평한 면'
