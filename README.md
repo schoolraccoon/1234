@@ -206,12 +206,17 @@
             
             // 주어진 각도에서 타원의 곡률 반지름 계산
             getCurvatureRadius(theta, a, b) {
-                const numerator = Math.pow(a * b, 2);
-                const denominator = Math.pow(
-                    Math.pow(a * Math.sin(theta), 2) + Math.pow(b * Math.cos(theta), 2), 
+                // 타원의 곡률 반지름 공식: R = (a²sin²θ + b²cos²θ)^(3/2) / (ab)²
+                const sinTheta = Math.sin(theta);
+                const cosTheta = Math.cos(theta);
+                
+                const numerator = Math.pow(
+                    a * a * sinTheta * sinTheta + b * b * cosTheta * cosTheta, 
                     1.5
                 );
-                return numerator / denominator;
+                const denominator = a * b;
+                
+                return numerator / (denominator * denominator);
             }
             
             // 표면 전하 밀도 계산 (곡률에 반비례)
