@@ -97,9 +97,9 @@
             box-shadow: 0 3px 10px rgba(0,0,0,0.1);
             min-width: 200px;
         }
-        .point-sharp { border-left: 5px solid #e74c3c; }
+        .point-sharptip { border-left: 5px solid #e74c3c; }
         .point-middle { border-left: 5px solid #f39c12; }
-        .point-flat { border-left: 5px solid #3498db; }
+        .point-flatside { border-left: 5px solid #3498db; }
         .field-value {
             font-size: 1.2em;
             font-weight: bold;
@@ -162,11 +162,12 @@
     </div>
 
     <script>
-        class ElectricFieldSimulation {
+        class EllipticalConductorSimulation {
             constructor() {
-                this.epsilon0 = 8.854e-12; // F/m
-                this.updateSimulation();
+                this.epsilon0 = 8.854e-12; // F/m (진공 유전율)
+                this.updateParametersFromUI(); // 초기 UI 값으로 파라미터 업데이트
                 this.setupEventListeners();
+                this.updateSimulation(); // 초기 시뮬레이션 실행
             }
             
             setupEventListeners() {
@@ -175,6 +176,7 @@
                     const element = document.getElementById(id);
                     element.addEventListener('input', () => {
                         this.updateDisplayValues();
+                        this.updateParametersFromUI();
                         this.updateSimulation();
                     });
                 });
@@ -192,76 +194,96 @@
                     document.getElementById('resolution').value + ' points';
             }
             
-            getParameters() {
-                return {
-                    totalCharge: parseFloat(document.getElementById('charge').value) * 1e-9,
-                    a: parseFloat(document.getElementById('semiMajor').value) * 0.01,
-                    b: parseFloat(document.getElementById('semiMinor').value) * 0.01,
-                    resolution: parseInt(document.getElementById('resolution').value)
-                };
+            updateParametersFromUI() {
+                this.totalCharge = parseFloat(document.getElementById('charge').value) * 1e-9; // nC -> C
+                this.a = parseFloat(document.getElementById('semiMajor').value) * 0.01;      // cm -> m
+                this.b = parseFloat(document.getElementById('semiMinor').value) * 0.01;      // cm -> m
+                this.resolution = parseInt(document.getElementById('resolution').value);
             }
             
-            // 주어진 각도에서 타원의 곡률 반지름 계산
-            getCurvatureRadius(theta, a, b) {
-                const numerator = Math.pow(a * b, 2);
-                const denominator = Math.pow(
-                    Math.pow(a * Math.sin(theta), 2) + Math.pow(b * Math.cos(theta), 2), 
-                    1.5
-                );
+            // 타원 상의 특정 각도(theta)에서의 곡률 반지름을 계산
+            getCurvatureRadius(theta) {
+                // 타원의 곡률 반지름 공식: R = (a^2 sin^2(theta) + b^2 cos^2(theta))^(3/2) / (ab)
+                const numerator = Math.pow(Math.pow(this.a * Math.sin(theta), 2) + Math.pow(this.b * Math.cos(theta), 2), 1.5);
+                const denominator = this.a * this.b;
                 return numerator / denominator;
             }
             
             // 표면 전하 밀도 계산 (곡률에 반비례)
-            getSurfaceChargeDensity(theta, params) {
-                const {totalCharge, a, b} = params;
-                const curvatureRadius = this.getCurvatureRadius(theta, a, b);
+            getSurfaceChargeDensity(theta) {
+                const curvatureRadius = this.getCurvatureRadius(theta);
+
+                // 타원형 도체의 전하 밀도 공식은 곡률에 반비례합니다.
+                // sigma = (Q / (2 * PI * c)) * (1 / sqrt(x^2/a^2 + y^2/b^2)) 형태와 유사하게,
+                // 곡률 반지름의 역수에 비례하도록 설정하고, 총 전하량에 맞게 정규화합니다.
                 
-                // 기본 전하 밀도
-                const baseDensity = totalCharge / (2 * Math.PI * Math.sqrt(a * b));
-                
-                // 곡률 효과: 곡률 반지름에 반비례
-                const curvatureFactor = 0.05 / curvatureRadius;
-                
-                return baseDensity * curvatureFactor;
-            }
-            
-            // 타원 표면의 점에서 전기장 계산
-            getElectricFieldAtSurface(theta, params) {
-                const chargeDensity = this.getSurfaceChargeDensity(theta, params);
-                // 도체 표면에서 전기장: E = σ/ε₀
-                return Math.abs(chargeDensity) / this.epsilon0;
+                // 타원의 둘레 (Ramanujan's approximation)를 사용하여 총 전하량 분배에 대한 상수를 구합니다.
+                const h = Math.pow((this.a - this.b) / (this.a + this.b), 2);
+                const circumference = Math.PI * (this.a + this.b) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+
+                // 곡률에 반비례하는 인자 (뾰족할수록 커집니다)
+                const chargeDistributionFactor = 1 / curvatureRadius;
+
+                // 정규화 상수 (이 상수는 전하 밀도 분포를 적분했을 때 총 전하량이 되도록 조절됩니다)
+                // 시뮬레이션 편의상 이 값을 조정하여 뾰족한 곳이 더 부각되도록 할 수 있습니다.
+                // 여기서는 대략적으로 평균적인 1/R 값에 비례하여 스케일링합니다.
+                const avgInverseCurvature = (1 / (this.b * this.b / this.a) + 1 / (this.a * this.a / this.b)) / 2; // (1/R_sharp + 1/R_flat) / 2
+                const normalizationConstant = this.totalCharge / (circumference * avgInverseCurvature); 
+
+                // 최종 전하 밀도
+                return normalizationConstant * chargeDistributionFactor;
             }
             
             // 타원 외부 점에서 전기장 계산
-            calculateElectricField(x, y, params) {
-                const {a, b} = params;
+            calculateElectricField(x, y) {
                 const r = Math.sqrt(x*x + y*y);
                 
-                if (r === 0) return {Ex: 0, Ey: 0, magnitude: 0};
-                
-                const theta = Math.atan2(y, x);
-                
-                // 타원 표면까지의 거리
-                const rSurface = (a * b) / Math.sqrt(
-                    Math.pow(b * Math.cos(theta), 2) + Math.pow(a * Math.sin(theta), 2)
-                );
-                
-                const distanceFromSurface = Math.max(0.001, r - rSurface);
-                
-                if (r <= rSurface) {
+                // 도체 내부 (또는 매우 가까운 지점)에서는 전기장이 0으로 가정합니다.
+                // 타원 내부인지 외부인지 판별
+                const isInside = (x * x / (this.a * this.a) + y * y / (this.b * this.b)) <= 1;
+
+                if (isInside) {
                     return {Ex: 0, Ey: 0, magnitude: 0};
                 }
                 
-                // 표면에서의 전기장 강도
-                const surfaceField = this.getElectricFieldAtSurface(theta, params);
+                // 각도 계산
+                let theta = Math.atan2(y, x);
+                // 각도를 0 ~ 2PI 범위로 정규화 (선택 사항이지만 일관성을 위해)
+                if (theta < 0) theta += 2 * Math.PI;
+
+                // 타원 표면까지의 거리 (해당 각도에서)
+                const rSurface = (this.a * this.b) / Math.sqrt(
+                    Math.pow(this.b * Math.cos(theta), 2) + Math.pow(this.a * Math.sin(theta), 2)
+                );
                 
-                // 거리에 따른 감소 (대략적으로 1/r² 법칙)
-                const fieldMagnitude = surfaceField * Math.pow(0.01 / distanceFromSurface, 1.5);
-                
-                // 전기장 벡터 성분
-                const Ex = fieldMagnitude * x / r;
-                const Ey = fieldMagnitude * y / r;
-                
+                // 측정 지점의 실제 위치가 타원 표면으로부터 5mm 떨어져 있으므로
+                // 해당 지점에서 전기장 강도를 계산
+                // 전기장은 표면 전하 밀도에 비례합니다 (E = sigma / epsilon0)
+                const chargeDensity = this.getSurfaceChargeDensity(theta);
+                const surfaceFieldMagnitude = Math.abs(chargeDensity) / this.epsilon0;
+
+                // 측정 지점이 표면에서 멀어질수록 전기장은 감소합니다.
+                // 1/r^2 법칙을 근사적으로 적용하되, 표면 가까이에서는 표면 전기장 값을 유지.
+                // 여기서는 표면에서의 전기장 값을 직접적으로 반환하여
+                // 뾰족한 곳에서 전기장이 높다는 것을 강조합니다.
+                // 실제 거리에 따른 감소는 시뮬레이션의 스케일과 목적에 따라 조정될 수 있습니다.
+                const effectiveDistanceFactor = Math.pow(rSurface / r, 1.5); // 거리가 멀어질수록 감소
+                const fieldMagnitude = surfaceFieldMagnitude * effectiveDistanceFactor;
+
+                // 전기장 벡터의 방향은 도체 표면에 수직한 방향입니다 (전하가 양수일 경우 바깥쪽).
+                // 타원 표면의 법선 벡터 방향으로 전기장 벡터를 구성합니다.
+                // 타원의 법선 벡터는 (x/a^2, y/b^2)에 비례합니다.
+                const normalX = x / (this.a * this.a);
+                const normalY = y / (this.b * this.b);
+                const normalMag = Math.sqrt(normalX * normalX + normalY * normalY);
+
+                let Ex = fieldMagnitude * normalX / normalMag;
+                let Ey = fieldMagnitude * normalY / normalMag;
+
+                // 도체 내부에서 0으로 설정했으므로, 밖에서는 항상 양의 방향으로 나오도록.
+                // r = 0 인 경우를 방지
+                if (r === 0) return {Ex: 0, Ey: 0, magnitude: 0};
+
                 return {
                     Ex: Ex,
                     Ey: Ey,
@@ -269,28 +291,30 @@
                 };
             }
             
-            // 측정 지점 정의
-            getMeasurementPoints(params) {
-                const {a, b} = params;
+            // 측정 지점 정의 (타원 표면으로부터 5mm 떨어진 지점)
+            getMeasurementPoints() {
+                const offset = 0.005; // 5mm
                 return {
                     sharp_tip: {
-                        x: a + 0.005, // 뾰족한 끝에서 5mm 떨어진 지점
+                        x: this.a + offset, // 뾰족한 끝 (장축 양 끝)
                         y: 0,
-                        angle: 0,
+                        angle: 0, // 해당 지점에 가장 가까운 타원 표면의 각도
                         color: '#e74c3c',
                         name: 'Sharp Tip'
                     },
                     middle: {
-                        x: a * 0.7 + 0.005,
-                        y: b * 0.7 + 0.005,
+                        // 중간 지점을 뾰족한 끝과 평평한 면 사이의 대략적인 위치로 설정
+                        // 예를 들어, x = a * cos(PI/4), y = b * sin(PI/4) 에서 5mm 떨어진 지점
+                        x: this.a * Math.cos(Math.PI/4) + offset * Math.cos(Math.PI/4),
+                        y: this.b * Math.sin(Math.PI/4) + offset * Math.sin(Math.PI/4),
                         angle: Math.PI/4,
                         color: '#f39c12',
                         name: 'Middle'
                     },
                     flat_side: {
                         x: 0,
-                        y: b + 0.005, // 평평한 면에서 5mm 떨어진 지점
-                        angle: Math.PI/2,
+                        y: this.b + offset, // 평평한 면 (단축 양 끝)
+                        angle: Math.PI/2, // 해당 지점에 가장 가까운 타원 표면의 각도
                         color: '#3498db',
                         name: 'Flat Side'
                     }
@@ -298,32 +322,32 @@
             }
             
             updateSimulation() {
-                const params = this.getParameters();
-                const measurementPoints = this.getMeasurementPoints(params);
+                this.updateParametersFromUI(); // 항상 최신 UI 값 반영
+                const measurementPoints = this.getMeasurementPoints();
                 
-                this.plotVectorField(params, measurementPoints);
-                this.plotContours(params, measurementPoints);
-                this.plotChargeDensityDistribution(params);
-                this.plotComparison(measurementPoints, params);
-                this.updateResults(measurementPoints, params);
+                this.plotVectorField(measurementPoints);
+                this.plotContours(measurementPoints);
+                this.plotChargeDensityDistribution();
+                this.plotComparison(measurementPoints);
+                this.updateResults(measurementPoints);
             }
             
-            plotVectorField(params, measurementPoints) {
-                const {a, b, resolution} = params;
+            plotVectorField(measurementPoints) {
+                const {a, b, resolution} = this;
                 
-                // 벡터 필드 그리드 생성
-                const xRange = [-a * 0.5, a * 1.5];
-                const yRange = [-a * 0.8, a * 0.8];
-                const skip = Math.max(1, Math.floor(resolution / 15));
+                const xRange = [-a * 1.5, a * 1.5]; // plot 범위 조정
+                const yRange = [-a * 1.0, a * 1.0]; // plot 범위 조정
+                const step = (xRange[1] - xRange[0]) / resolution;
                 
                 const vectors = [];
-                for (let i = 0; i < resolution; i += skip) {
-                    for (let j = 0; j < resolution; j += skip) {
-                        const x = xRange[0] + (xRange[1] - xRange[0]) * i / (resolution - 1);
-                        const y = yRange[0] + (yRange[1] - yRange[0]) * j / (resolution - 1);
+                for (let i = 0; i <= resolution; i++) {
+                    const x = xRange[0] + i * step;
+                    for (let j = 0; j <= resolution; j++) {
+                        const y = yRange[0] + j * step;
                         
-                        const field = this.calculateElectricField(x, y, params);
-                        if (field.magnitude > 1e5) {
+                        const field = this.calculateElectricField(x, y);
+                        // 전기장 크기가 0이 아닌 유효한 값일 경우만 벡터 추가
+                        if (field.magnitude > 1e3) { // 너무 작은 필드는 그리지 않음 (노이즈 방지)
                             vectors.push({x, y, Ex: field.Ex, Ey: field.Ey, mag: field.magnitude});
                         }
                     }
@@ -354,7 +378,7 @@
                 
                 // 측정 지점 추가
                 Object.values(measurementPoints).forEach(point => {
-                    const field = this.calculateElectricField(point.x, point.y, params);
+                    const field = this.calculateElectricField(point.x, point.y);
                     traces.push({
                         type: 'scatter',
                         mode: 'markers+text',
@@ -365,7 +389,7 @@
                             color: point.color,
                             line: {color: 'white', width: 2}
                         },
-                        text: [`${point.name}: ${field.magnitude.toExponential(1)} V/m`],
+                        text: [`${point.name}`], // 텍스트는 이름만 표시, 값은 hovertemplate 또는 결과 패널에서
                         textposition: 'top center',
                         textfont: {size: 10},
                         name: point.name,
@@ -375,62 +399,65 @@
                 
                 const layout = {
                     title: 'Electric Field Vectors',
-                    xaxis: {title: 'Distance (m)', scaleanchor: 'y'},
-                    yaxis: {title: 'Distance (m)'},
+                    xaxis: {title: 'X (m)', scaleanchor: 'y', range: xRange},
+                    yaxis: {title: 'Y (m)', range: yRange},
                     showlegend: true,
                     margin: {t: 40, b: 40, l: 40, r: 40},
                     annotations: []
                 };
                 
-                // 벡터 화살표 추가
-                vectors.slice(0, 50).forEach(v => {
-                    const norm = Math.sqrt(v.Ex*v.Ex + v.Ey*v.Ey);
+                // 벡터 화살표 추가 (간격을 두어 너무 많지 않게)
+                const arrowScale = 0.01; // 화살표 길이 스케일
+                const maxArrows = 100; // 최대 화살표 개수 제한
+                const arrowStride = Math.max(1, Math.floor(vectors.length / maxArrows));
+
+                for (let k = 0; k < vectors.length; k += arrowStride) {
+                    const v = vectors[k];
+                    const norm = v.mag;
                     if (norm > 0) {
-                        const scale = 0.02;
                         layout.annotations.push({
                             x: v.x,
                             y: v.y,
-                            ax: v.x + v.Ex / norm * scale,
-                            ay: v.y + v.Ey / norm * scale,
+                            ax: v.x + v.Ex / norm * arrowScale,
+                            ay: v.y + v.Ey / norm * arrowScale,
+                            xref: 'x',
+                            yref: 'y',
+                            axref: 'x',
+                            ayref: 'y',
                             arrowhead: 2,
                             arrowsize: 1,
                             arrowwidth: 2,
-                            arrowcolor: 'blue',
-                            axref: 'x',
-                            ayref: 'y'
+                            arrowcolor: 'blue'
                         });
                     }
-                });
+                }
                 
                 Plotly.newPlot('fieldPlot', traces, layout);
             }
             
-            plotContours(params, measurementPoints) {
-                const {a, b, resolution} = params;
+            plotContours(measurementPoints) {
+                const {a, b, resolution} = this;
                 
-                // 등고선용 그리드 생성
                 const x = [];
                 const y = [];
                 const z = [];
                 
-                const xRange = [-a * 0.5, a * 1.5];
-                const yRange = [-a * 0.8, a * 0.8];
+                const xRange = [-a * 1.5, a * 1.5];
+                const yRange = [-a * 1.0, a * 1.0];
                 
                 for (let i = 0; i < resolution; i++) {
-                    const xi = xRange[0] + (xRange[1] - xRange[0]) * i / (resolution - 1);
-                    x.push(xi);
+                    x.push(xRange[0] + (xRange[1] - xRange[0]) * i / (resolution - 1));
                 }
                 
                 for (let j = 0; j < resolution; j++) {
-                    const yj = yRange[0] + (yRange[1] - yRange[0]) * j / (resolution - 1);
-                    y.push(yj);
+                    y.push(yRange[0] + (yRange[1] - yRange[0]) * j / (resolution - 1));
                 }
                 
                 for (let j = 0; j < resolution; j++) {
                     const row = [];
                     for (let i = 0; i < resolution; i++) {
-                        const field = this.calculateElectricField(x[i], y[j], params);
-                        row.push(Math.log10(Math.max(1e4, field.magnitude)));
+                        const field = this.calculateElectricField(x[i], y[j]);
+                        row.push(Math.log10(Math.max(1e3, field.magnitude))); // log 스케일로 표시, 최소값 설정
                     }
                     z.push(row);
                 }
@@ -452,7 +479,8 @@
                         z: z,
                         colorscale: 'Hot',
                         contours: {
-                            coloring: 'fill'
+                            coloring: 'fill',
+                            showlines: true // 등고선 라인 표시
                         },
                         colorbar: {
                             title: 'log₁₀(E) [V/m]'
@@ -464,7 +492,7 @@
                         mode: 'lines',
                         x: ellipseX,
                         y: ellipseY,
-                        line: {color: 'white', width: 4},
+                        line: {color: 'white', width: 4}, // 도체 경계를 더 잘 보이게
                         name: 'Conductor',
                         hoverinfo: 'none'
                     }
@@ -489,8 +517,8 @@
                 
                 const layout = {
                     title: 'Electric Field Strength Contours',
-                    xaxis: {title: 'Distance (m)', scaleanchor: 'y'},
-                    yaxis: {title: 'Distance (m)'},
+                    xaxis: {title: 'X (m)', scaleanchor: 'y', range: xRange},
+                    yaxis: {title: 'Y (m)', range: yRange},
                     showlegend: false,
                     margin: {t: 40, b: 40, l: 40, r: 40}
                 };
@@ -498,8 +526,8 @@
                 Plotly.newPlot('contourPlot', traces, layout);
             }
             
-            plotChargeDensityDistribution(params) {
-                const {a, b} = params;
+            plotChargeDensityDistribution() {
+                const {a, b} = this;
                 const angles = [];
                 const chargeDensities = [];
                 const curvatureRadii = [];
@@ -508,11 +536,11 @@
                     const theta = i * Math.PI / 180;
                     angles.push(i);
                     
-                    const density = this.getSurfaceChargeDensity(theta, params);
-                    chargeDensities.push(density * 1e9); // nC/m²로 변환
+                    const density = this.getSurfaceChargeDensity(theta);
+                    chargeDensities.push(density * 1e9); // C/m² -> nC/m²
                     
-                    const curvature = this.getCurvatureRadius(theta, a, b);
-                    curvatureRadii.push(curvature * 100); // cm로 변환
+                    const curvature = this.getCurvatureRadius(theta);
+                    curvatureRadii.push(curvature * 100); // m -> cm
                 }
                 
                 const trace1 = {
@@ -559,13 +587,13 @@
                 Plotly.newPlot('chargeDensityPlot', [trace1, trace2], layout);
             }
             
-            plotComparison(measurementPoints, params) {
+            plotComparison(measurementPoints) {
                 const names = [];
                 const fieldStrengths = [];
                 const colors = [];
                 
                 Object.values(measurementPoints).forEach(point => {
-                    const field = this.calculateElectricField(point.x, point.y, params);
+                    const field = this.calculateElectricField(point.x, point.y);
                     names.push(point.name);
                     fieldStrengths.push(field.magnitude);
                     colors.push(point.color);
@@ -584,20 +612,20 @@
                 const layout = {
                     title: 'Electric Field Comparison',
                     xaxis: {title: 'Measurement Point'},
-                    yaxis: {title: 'Electric Field (V/m)', type: 'log'},
+                    yaxis: {title: 'Electric Field (V/m)', type: 'log'}, // 로그 스케일
                     margin: {t: 40, b: 40, l: 40, r: 40}
                 };
                 
                 Plotly.newPlot('comparisonPlot', [trace], layout);
             }
             
-            updateResults(measurementPoints, params) {
+            updateResults(measurementPoints) {
                 let html = '';
                 
                 Object.values(measurementPoints).forEach(point => {
-                    const field = this.calculateElectricField(point.x, point.y, params);
-                    const curvature = this.getCurvatureRadius(point.angle, params.a, params.b);
-                    const chargeDensity = this.getSurfaceChargeDensity(point.angle, params);
+                    const field = this.calculateElectricField(point.x, point.y);
+                    const curvature = this.getCurvatureRadius(point.angle);
+                    const chargeDensity = this.getSurfaceChargeDensity(point.angle);
                     
                     const className = `measurement-point point-${point.name.toLowerCase().replace(' ', '')}`;
                     
@@ -618,7 +646,7 @@
         
         // 페이지 로드 시 시뮬레이션 초기화
         window.addEventListener('load', () => {
-            new ElectricFieldSimulation();
+            new EllipticalConductorSimulation();
         });
     </script>
 </body>
