@@ -226,8 +226,8 @@
 
                 // 정규화 상수 계산 (전하 밀도 분포를 적분했을 때 총 전하량이 되도록)
                 // 뾰족한 곳 (theta = 0)과 평평한 곳 (theta = PI/2)의 곡률 반지름을 이용한 평균 역 곡률
-                const minCurvatureRadius = this.getCurvatureRadius(0); 
-                const maxCurvatureRadius = this.getCurvatureRadius(Math.PI / 2); 
+                const minCurvatureRadius = this.getCurvatureRadius(0);  
+                const maxCurvatureRadius = this.getCurvatureRadius(Math.PI / 2);  
                 const avgInverseCurvature = (1 / minCurvatureRadius + 1 / maxCurvatureRadius) / 2;
                 
                 const normalizationConstant = this.totalCharge / (circumference * avgInverseCurvature); 
@@ -484,7 +484,16 @@
                 const layout = {
                     title: '측정 지점별 전기장 비교',
                     xaxis: {title: '측정 지점'},
-                    yaxis: {title: '전기장 (V/m)', type: 'log', automargin: true}, // 로그 스케일, 자동 마진
+                    yaxis: {
+                        title: '전기장 (V/m)', 
+                        type: 'log', 
+                        automargin: true,
+                        // Y축 로그 스케일 눈금 수정
+                        tickmode: 'array',
+                        tickvals: [1e3, 2e3, 3e3, 4e3, 5e3, 6e3, 7e3, 8e3, 9e3, 1e4, 2e4, 3e4, 4e4, 5e4, 6e4, 7e4, 8e4, 9e4, 1e5, 2e5, 3e5, 4e5],
+                        ticktext: ['1e3', '2e3', '3e3', '4e3', '5e3', '6e3', '7e3', '8e3', '9e3', '1e4', '2e4', '3e4', '4e4', '5e4', '6e4', '7e4', '8e4', '9e4', '1e5', '2e5', '3e5', '4e5'],
+                        range: [Math.log10(1e3), Math.log10(Math.max(...fieldStrengths) * 1.5)] // 동적으로 최대값 범위 조정
+                    }, 
                     margin: {t: 40, b: 40, l: 40, r: 40}
                 };
                 
