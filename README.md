@@ -476,11 +476,39 @@
                     x: names,
                     y: fieldStrengths,
                     marker: {color: colors, opacity: 0.8},
-                    text: fieldStrengths.map(f => f.toExponential(1)), // 과학적 표기법
+                    // 막대 위에 과학적 표기법으로 값 표시
+                    text: fieldStrengths.map(f => f.toExponential(1)), 
                     textposition: 'outside',
                     hovertemplate: '%{x}: %{y:.2e} V/m<extra></extra>'
                 };
                 
+                // Y축 눈금 값과 텍스트를 과학적 표기법으로 생성하는 헬퍼 함수
+                const generateLogTicks = (minVal, maxVal) => {
+                    const tickVals = [];
+                    const tickTexts = [];
+                    let currentPower = Math.floor(Math.log10(minVal));
+                    let currentVal = Math.pow(10, currentPower);
+
+                    while (currentVal <= maxVal * 1.1) { // 최대값보다 조금 더 크게 커버
+                        for (let i = 1; i < 10; i++) {
+                            const val = i * currentVal;
+                            if (val >= minVal && val <= maxVal * 1.1) {
+                                tickVals.push(val);
+                                // LaTeX 스타일의 과학적 표기법 텍스트 생성
+                                tickTexts.push(`${i === 1 ? '10' : i}e${currentPower}`);
+                            }
+                        }
+                        currentPower++;
+                        currentVal = Math.pow(10, currentPower);
+                    }
+                    return { tickVals, tickTexts };
+                };
+
+                const { tickVals, tickTexts } = generateLogTicks(
+                    Math.max(1e3, Math.min(...fieldStrengths) / 2), // 최소값은 1e3 (1000) 또는 실제 데이터의 절반 중 큰 값
+                    Math.max(...fieldStrengths) * 2 // 최대값의 2배까지 표시
+                );
+
                 const layout = {
                     title: '측정 지점별 전기장 비교',
                     xaxis: {title: '측정 지점'},
@@ -488,11 +516,11 @@
                         title: '전기장 (V/m)', 
                         type: 'log', 
                         automargin: true,
-                        // Y축 로그 스케일 눈금 수정
                         tickmode: 'array',
-                        tickvals: [1e3, 2e3, 3e3, 4e3, 5e3, 6e3, 7e3, 8e3, 9e3, 1e4, 2e4, 3e4, 4e4, 5e4, 6e4, 7e4, 8e4, 9e4, 1e5, 2e5, 3e5, 4e5],
-                        ticktext: ['1e3', '2e3', '3e3', '4e3', '5e3', '6e3', '7e3', '8e3', '9e3', '1e4', '2e4', '3e4', '4e4', '5e4', '6e4', '7e4', '8e4', '9e4', '1e5', '2e5', '3e5', '4e5'],
-                        range: [Math.log10(1e3), Math.log10(Math.max(...fieldStrengths) * 1.5)] // 동적으로 최대값 범위 조정
+                        tickvals: tickVals,
+                        ticktext: tickTexts,
+                        // Y축 범위 조정: 최소값은 1000V/m 미만이면 1000V/m로 설정, 최대값은 가장 큰 데이터의 1.5배 정도로 설정
+                        range: [Math.log10(Math.max(1e3, Math.min(...fieldStrengths) / 2)), Math.log10(Math.max(...fieldStrengths) * 1.5)]
                     }, 
                     margin: {t: 40, b: 40, l: 40, r: 40}
                 };
