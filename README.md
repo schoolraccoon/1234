@@ -356,9 +356,11 @@
             plotVectorField(measurementPoints) {
                 const {a, b, resolution} = this;
                 
-                // 플롯 범위는 장반경의 1.5배 정도로 설정
-                const xRange = [-a * 1.5, a * 1.5]; 
-                const yRange = [-a * 1.0, a * 1.0]; // y 범위는 a에 비례하되, 너무 길쭉하지 않게 조정
+                // 플롯 범위를 고정된 값으로 설정 (장반경 최대값에 기반하여 넉넉하게)
+                // Assuming max semiMajor is 15cm = 0.15m. Let's make the plot range fixed, e.g., +/- 0.25m
+                const fixedPlotRange = 0.25; // meters
+                const xRange = [-fixedPlotRange, fixedPlotRange]; 
+                const yRange = [-fixedPlotRange, fixedPlotRange]; 
                 const stepX = (xRange[1] - xRange[0]) / resolution;
                 const stepY = (yRange[1] - yRange[0]) / resolution;
                 
@@ -430,7 +432,8 @@
                 };
                 
                 // 벡터 화살표 추가 (간격을 두어 너무 많지 않게)
-                const arrowScale = Math.max(a, b) * 0.05; // 화살표 길이 스케일 조정
+                // Arrow scale should also be relative to the fixed plot range, not ellipse size
+                const arrowScale = fixedPlotRange * 0.05; // Adjust as needed for good visualization
                 const maxArrows = 200; // 최대 화살표 개수 제한
                 const arrowStride = Math.max(1, Math.floor(vectors.length / maxArrows));
 
