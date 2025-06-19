@@ -356,9 +356,8 @@
             plotVectorField(measurementPoints) {
                 const {a, b, resolution} = this;
                 
-                // 플롯 범위를 고정된 값으로 설정 (장반경 최대값에 기반하여 넉넉하게)
-                // Assuming max semiMajor is 15cm = 0.15m. Let's make the plot range fixed, e.g., +/- 0.25m
-                const fixedPlotRange = 0.25; // meters
+                // 플롯 범위를 고정된 값으로 설정 (최대 장반경 15cm = 0.15m를 고려하여 넉넉하게)
+                const fixedPlotRange = 0.25; // meters (예: +/- 25cm)
                 const xRange = [-fixedPlotRange, fixedPlotRange]; 
                 const yRange = [-fixedPlotRange, fixedPlotRange]; 
                 const stepX = (xRange[1] - xRange[0]) / resolution;
@@ -432,8 +431,8 @@
                 };
                 
                 // 벡터 화살표 추가 (간격을 두어 너무 많지 않게)
-                // Arrow scale should also be relative to the fixed plot range, not ellipse size
-                const arrowScale = fixedPlotRange * 0.05; // Adjust as needed for good visualization
+                // 화살표 스케일도 고정된 플롯 범위에 비례하도록 조정
+                const arrowScale = fixedPlotRange * 0.05; // 좋은 시각화를 위해 조정 가능
                 const maxArrows = 200; // 최대 화살표 개수 제한
                 const arrowStride = Math.max(1, Math.floor(vectors.length / maxArrows));
 
@@ -497,8 +496,9 @@
                             const val = i * currentVal;
                             if (val >= minVal && val <= maxVal * 1.1) {
                                 tickVals.push(val);
-                                // LaTeX 스타일의 과학적 표기법 텍스트 생성
-                                tickTexts.push(`${i === 1 ? '10' : i}e${currentPower}`);
+                                // Plotly는 HTML을 직접 렌더링하지 않으므로, LaTeX 포맷을 사용하려면 MathJax 같은 추가 라이브러리가 필요합니다.
+                                // 여기서는 일반적인 과학적 표기법 문자열로 대체합니다.
+                                tickTexts.push(`${i}${currentPower !== 0 ? 'e' + currentPower : ''}`);
                             }
                         }
                         currentPower++;
